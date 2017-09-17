@@ -1,0 +1,176 @@
+Visualization of Population and GPD Variation
+========================================================
+author: Olivier Chimi C
+date: 2017-09-17
+autosize: true
+
+Introduction
+========================================================
+
+This aplication alowed to load population or GDP variation from 1960 to 2016. 
+
+
+This aplication alowed to visualize Data on one panel and on other panel: 
+
+- The population variation of selected country from 1960 to 2016
+- The GDP variation of selected country from 1960 to 2016
+
+
+Input
+========================================================
+
+- X axis is the date which has default values (Date)
+- X axis is the population variation or GDP according to the file load
+
+Follow the exemplde of the data format for this application 
+```{r, echo=FALSE}
+df <- read.csv("PopPays.csv")
+df <- df[2:11]
+```
+- Population of 10 country from 196 to 2016
+```{r}
+str(df)
+```
+
+ui.R
+========================================================
+
+```{r,eval=FALSE}
+library(shiny)
+shinyUI(pageWithSidebar(
+    headerPanel("Population and GDP over the word"),
+    sidebarPanel(
+        fileInput('file1', 'Choose CSV File',
+                  accept=c('text/csv','text/comma-separated-values,text/plain','.csv')),
+        tags$hr(),
+        checkboxInput('header', 'Header', TRUE),
+        
+        fluidRow(
+            column(6,selectInput("xaxisGrp","X-Axis:", 
+                                 c("1"="1","2"="2","3"="3","4"="4","5"="5","6"="6"))),
+            column(6,checkboxGroupInput("yaxisGrp","Y-axis:", 
+                                        c("1"="1","2"="2","3"="3","4"="4","5"="5","6"="6")))
+        ),
+        # Select whether to overlay smooth trend line
+        checkboxInput(inputId = "light", label = strong("Change light line"), value = FALSE),
+        
+        # Display only if the light is checked
+        conditionalPanel(condition = "input.light == true",
+                         sliderInput(inputId = "f", label = "Curve light:",
+                                     min = 0.01, max = 1, value = 0.67, step = 0.01,
+                                     animate = animationOptions(interval = 100)),
+                         HTML("Higher values give more smoothness.")
+        ),        
+        radioButtons('sep', 'Separator',
+                     c(Comma=',', Semicolon=';',Tab='\t'), ','),
+        uiOutput("choose_columns")
+    ),
+    
+    mainPanel(
+        tabsetPanel(
+            tabPanel("Plot",plotOutput("plot")),
+            tabPanel("Data", tableOutput('contents'))
+        )
+    )
+)
+)
+```
+
+
+Server.R
+========================================================
+
+```{r, eval=FALSE}
+library(shiny)
+library(shinydashboard)
+library(leaflet)
+library(data.table)
+library(ggplot2)
+library(scales)
+shinyServer(
+    function(input, output,session) {
+        dsnames <- c()
+        
+        data_set <- reactive({
+            inFile <- input$file1
+            
+            if (is.null(inFile))
+                return(read.csv("PopPays.csv"))
+            
+            data_set<-read.csv(inFile$datapath, header=input$header, 
+                               sep=input$sep, quote=input$quote)
+        })
+        
+        output$contents <- renderTable({data_set()[2:(ncol(data_set())-1)]})
+        
+        observe({
+            dsnames <- names(data_set())[2:(ncol(data_set())-1)]
+            cb_options <- list()
+            cb_options[ dsnames] <- dsnames
+            
+            dsnames1 <-c()
+            dsnames1 <- "Date" #names(data_set())[11]
+            cb_options1 <- list()
+            cb_options1[ dsnames1] <- dsnames1
+            
+            updateSelectInput(session, "xaxisGrp",
+                              label = "X-Axis",
+                              choices = cb_options1,
+                              selected = "")
+            updateCheckboxGroupInput(session, "yaxisGrp",
+                                     label = "Y-Axis",
+                                     choices = cb_options,
+                                     selected = "")
+        })
+        output$choose_dataset <- renderUI({
+            selectInput("dataset", "Data set", as.list(data_sets))
+        })
+        output$plot = renderPlot(
+            {
+                df <- data_set()[2:11]
+                gp <- NULL
+                if (!is.null(df)){
+                    xv <- input$xaxisGrp
+                    yv <- input$yaxisGrp
+                    
+                    if (!is.null(xv) & !is.null(yv)){
+                        if (sum(xv %in% names(df))>0){ # supress error when changing files
+
+                                mdf <- melt(df,id.vars=xv,measure.vars=yv)
+                                if(input$light){
+                                gp <- ggplot(data=mdf) + 
+                                    geom_point(aes_string(x=xv,y="value",color="variable"),alpha = input$f)+
+                                    labs(x = input$xaxisGrp, y ="value")
+                                }else{
+                                    gp <- ggplot(data=mdf) + 
+                                        geom_point(aes_string(x=xv,y="value",color="variable"))+
+                                        labs(x = input$xaxisGrp, y ="value")
+                                }
+                        }
+                    }
+                }
+                return(gp)
+            }
+        )
+        output$choose_columns <- renderUI({
+            
+            if(is.null(input$dataset))
+                return()
+            colnames <- names(contents)
+            checkboxGroupInput("columns", "Choose columns", 
+                               choices  = colnames,
+                               selected = colnames)
+        }) 
+    }
+)
+```
+
+Application scream
+========================================================
+
+```{r,fig.width=350, fig.height=250,echo=FALSE}
+library(png)
+library(grid)
+appimg <- readPNG('appli.png')
+grid.raster(appimg)
+```
